@@ -8,8 +8,10 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CursorPaginationDto } from './dto/cursor-pagination.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
@@ -27,8 +29,11 @@ export class UsersController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: CursorPaginationDto) {
+    return this.usersService.findAll({
+      limit: query.limit,
+      cursor: query.cursor,
+    });
   }
 
   @Get(':id')

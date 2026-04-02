@@ -28,8 +28,45 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  findAll() {
-    return this.userRepository.find();
+  private encodeCursor(record: User): string {
+    return Buffer.from(`${record.createdAt.toISOString()}::${record.id}`).toString('base64');
+  }
+
+  private decodeCursor(cursor: string): { createdAt: Date; id: string } {
+    try {
+      const decoded = Buffer.from(cursor, 'base64').toString('utf-8');
+      const [createdAt, id] = decoded.split('::');
+      return { createdAt: new Date(createdAt), id };
+    } catch {
+      throw new Error('Invalid cursor');
+    }
+  }
+
+  async findAll(options?: { limit?: number; cursor?: string }) {
+    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+    const cursor = options?.cursor;
+
+    const qb = this.userRepository.createQueryBuilder('user')
+      .orderBy('user.createdAt', 'DESC')
+      .addOrderBy('user.id', 'DESC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const { createdAt, id } = this.decodeCursor(cursor);
+      qb.where(
+        '(user.createdAt < :createdAt OR (user.createdAt = :createdAt AND user.id < :id))',
+        { createdAt, id },
+      );
+    }
+
+    const rows = await qb.getMany();
+    const hasNext = rows.length > limit;
+    const payload = rows.slice(0, limit);
+
+    return {
+      data: payload,
+      nextCursor: hasNext ? this.encodeCursor(payload[payload.length - 1]) : null,
+    };
   }
 
   async findOne(id: string) {
