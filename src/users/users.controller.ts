@@ -11,6 +11,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { CursorPaginationDto } from './dto/cursor-pagination.dto';
@@ -41,9 +42,27 @@ export class UsersController {
    * POST /users
    * Create a new user account.
    * Returns 201 Created with the sanitised user DTO.
+   *
+   * ── Step 3: Strict rate-limit override ─────────────────────────────
+   *
+   * The global ThrottlerGuard allows 100 req / 60 s.  Registration is a
+   * high-value target for credential-stuffing botnets: each successful
+   * POST creates a new persistent identity that can be used to probe
+   * other services.
+   *
+   * @Throttle overrides the 'global' named throttler for this route only:
+   *   3 registrations per IP per hour.
+   *
+   * Why 3?  A legitimate human user rarely needs more than 1–2 accounts.
+   * 3 gives a small buffer for test/retry scenarios while making
+   * automated account-farming economically unviable without IP rotation.
+   *
+   * This does NOT replace WAF-level controls; it is a last-resort layer
+   * inside the application boundary.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ global: { ttl: 3_600_000, limit: 3 } })
   async create(
     @Body() createUserDto: CreateUserDto,
   ): Promise<UserResponseDto> {
