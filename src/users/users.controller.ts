@@ -13,6 +13,7 @@ import {
 import { CreateUserDto } from './dto/create-user.dto';
 import { CursorPaginationDto } from './dto/cursor-pagination.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserMapper } from './mappers/user.mapper';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -23,29 +24,31 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createUserDto: CreateUserDto) {
     const createdUser = await this.usersService.create(createUserDto);
-    // password is excluded by entity setup (select: false)
-    return createdUser;
+    return UserMapper.toResponse(createdUser);
   }
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  findAll(@Query() query: CursorPaginationDto) {
-    return this.usersService.findAll({
+  async findAll(@Query() query: CursorPaginationDto) {
+    const result = await this.usersService.findAll({
       limit: query.limit,
       cursor: query.cursor,
     });
+    return UserMapper.toResponsePaginated(result);
   }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const user = await this.usersService.findOne(id);
+    return UserMapper.toResponse(user);
   }
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    const updatedUser = await this.usersService.update(id, updateUserDto);
+    return UserMapper.toResponse(updatedUser);
   }
 
   @Delete(':id')
