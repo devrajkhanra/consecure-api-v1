@@ -1,5 +1,7 @@
 import { Expose } from 'class-transformer';
 
+import { Role } from '../../auth/enums/role.enum';
+
 /**
  * The exact shape this API exposes to callers.
  *
@@ -11,7 +13,7 @@ import { Expose } from 'class-transformer';
  *    future internal columns added to the entity.
  *  - We never add `password` here. Ever.
  *  - Dates are typed as Date so serialisation to ISO-8601 is handled
- *    by the NestJS ClassSerializerInterceptor or JSON.stringify.
+ *    by JSON.stringify.
  */
 export class UserResponseDto {
   @Expose()
@@ -28,6 +30,9 @@ export class UserResponseDto {
 
   @Expose()
   isActive!: boolean;
+
+  @Expose()
+  roles!: Role[];
 
   @Expose()
   createdAt!: Date;

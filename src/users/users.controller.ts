@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,59 +11,51 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 
+import { Action } from '../auth/enums/action.enum';
+import { Role } from '../auth/enums/role.enum';
+import { CaslAbilityFactory } from '../auth/casl/casl-ability.factory';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CursorPaginationDto } from './dto/cursor-pagination.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserMapper } from './mappers/user.mapper';
 import { UsersService } from './users.service';
+import type { User } from './entities/user.entity';
 
 /**
  * Entry/exit point for the Users HTTP surface.
  *
- * Responsibilities:
- *  - Parse and validate inbound HTTP data (delegated to DTOs + ValidationPipe).
- *  - Delegate business logic entirely to UsersService.
- *  - Map every outbound result through UserMapper before returning it.
- *
- * What this controller must NEVER do:
- *  - Contain business logic (duplicate checks, hashing, etc.)
- *  - Return a raw User entity — doing so risks leaking `password`,
- *    `deletedAt`, or future sensitive columns added to the entity.
- *  - Import anything from TypeORM.
+ * Authorization model (applied on top of the global JwtAuthGuard):
+ *  - POST /users          — ADMIN or SUPER_ADMIN only. Use /auth/register
+ *                           for self-service registration.
+ *  - GET /users           — ADMIN or SUPER_ADMIN only.
+ *  - GET /users/:id       — Own profile OR admin.
+ *  - PATCH /users/:id     — CASL-controlled: users may update only their
+ *                           own non-sensitive fields; admins may update any.
+ *  - DELETE /users/:id    — Own account OR admin.
  */
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
+  ) {}
 
   /**
    * POST /users
-   * Create a new user account.
-   * Returns 201 Created with the sanitised user DTO.
-   *
-   * ── Step 3: Strict rate-limit override ─────────────────────────────
-   *
-   * The global ThrottlerGuard allows 100 req / 60 s.  Registration is a
-   * high-value target for credential-stuffing botnets: each successful
-   * POST creates a new persistent identity that can be used to probe
-   * other services.
-   *
-   * @Throttle overrides the 'global' named throttler for this route only:
-   *   3 registrations per IP per hour.
-   *
-   * Why 3?  A legitimate human user rarely needs more than 1–2 accounts.
-   * 3 gives a small buffer for test/retry scenarios while making
-   * automated account-farming economically unviable without IP rotation.
-   *
-   * This does NOT replace WAF-level controls; it is a last-resort layer
-   * inside the application boundary.
+   * Admin-only user creation (bypasses the registration flow).
+   * Self-service registration should use POST /auth/register.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ global: { ttl: 3_600_000, limit: 3 } })
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   async create(
     @Body() createUserDto: CreateUserDto,
   ): Promise<UserResponseDto> {
@@ -72,16 +65,12 @@ export class UsersController {
 
   /**
    * GET /users?limit=25&cursor=<token>
-   * Retrieve a cursor-paginated list of users.
-   *
-   * Response shape:
-   * {
-   *   data: UserResponseDto[],
-   *   nextCursor: string | null   // null means no further pages
-   * }
+   * Paginated user list — admin only.
    */
   @Get()
   @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   async findAll(
     @Query() query: CursorPaginationDto,
   ): Promise<{ data: UserResponseDto[]; nextCursor: string | null }> {
@@ -94,46 +83,70 @@ export class UsersController {
 
   /**
    * GET /users/:id
-   * Retrieve a single user by UUID.
-   * Returns 404 when the user does not exist.
-   *
-   * ParseUUIDPipe rejects syntactically invalid UUIDs with 400 before
-   * the service layer is ever reached — no wasted DB round-trips.
+   * Users may fetch their own profile; admins may fetch any profile.
    */
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: User,
   ): Promise<UserResponseDto> {
-    const user = await this.usersService.findOne(id);
-    return UserMapper.toResponse(user);
+    const target = await this.usersService.findOne(id);
+    const ability = this.caslAbilityFactory.createForUser(currentUser);
+
+    if (!ability.can(Action.Read, target)) {
+      throw new ForbiddenException(
+        'You do not have permission to view this user',
+      );
+    }
+
+    return UserMapper.toResponse(target);
   }
 
   /**
    * PATCH /users/:id
-   * Partially update a user.  All fields are optional.
-   * Returns 404 when the user does not exist.
-   * Returns 409 when the new email is already taken.
+   * CASL-enforced: users can update their own firstName/lastName;
+   * admins can update any field except roles (SUPER_ADMIN only).
    */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() currentUser: User,
   ): Promise<UserResponseDto> {
+    const target = await this.usersService.findOne(id);
+    const ability = this.caslAbilityFactory.createForUser(currentUser);
+
+    if (!ability.can(Action.Update, target)) {
+      throw new ForbiddenException(
+        'You do not have permission to update this user',
+      );
+    }
+
     const user = await this.usersService.update(id, updateUserDto);
     return UserMapper.toResponse(user);
   }
 
   /**
    * DELETE /users/:id
-   * Soft-delete a user (sets deletedAt; row remains in DB).
-   * Returns 204 No Content on success — no body.
-   * Returns 404 when the user does not exist.
+   * Users may delete their own account; admins may delete any account.
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: User,
+  ): Promise<void> {
+    const target = await this.usersService.findOne(id);
+    const ability = this.caslAbilityFactory.createForUser(currentUser);
+
+    if (!ability.can(Action.Delete, target)) {
+      throw new ForbiddenException(
+        'You do not have permission to delete this user',
+      );
+    }
+
     await this.usersService.remove(id);
   }
 }

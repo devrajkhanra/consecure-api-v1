@@ -1,0 +1,43 @@
+Act as a Principal Software Engineer (L99) specializing in NestJS and Clean Architecture.
+
+I need to generate a new AuthModule that handles JWT Authentication, RBAC, and CASL. It must strictly adhere to the Clean Architecture practices already established in my UsersModule (strict DTOs, Mappers, and Repository Pattern).
+
+Please execute the following steps and provide the complete code for each file:
+
+1. Update the User Domain
+
+Create an enum Role { USER = 'USER', ADMIN = 'ADMIN' }.
+
+Update User entity to include a role column defaulting to Role.USER.
+
+Update UserResponseDto and UserMapper to include the role.
+
+Update IUserRepository and TypeOrmUserRepository to include a findByEmail(email: string) method (needed for login).
+
+2. Build the Auth Core (Authentication)
+
+Create LoginDto with strict validation (@IsEmail, @IsString, @MaxLength).
+
+Create AuthResponseDto containing accessToken and the mapped UserResponseDto.
+
+Create AuthService with a login method that fetches a user via UsersService, verifies the bcrypt password, and signs a JWT containing { sub: user.id, email: user.email, role: user.role }.
+
+Create JwtStrategy (extending PassportStrategy) to validate tokens.
+
+Create AuthController with a @Post('login') endpoint.
+
+3. Build the CASL / RBAC Engine (Authorization)
+
+Create an Action enum (Manage, Create, Read, Update, Delete).
+
+Create CaslAbilityFactory that returns an AppAbility.
+
+If user.role === ADMIN, they can(Action.Manage, 'all').
+
+If user.role === USER, they can(Action.Read, User, { id: user.id }) and can(Action.Update, User, { id: user.id }).
+
+Create a @CheckPolicies() decorator to attach required CASL rules to route handlers.
+
+Create a PoliciesGuard that implements CanActivate, uses the CaslAbilityFactory, and checks if the req.user satisfies the rules defined by the @CheckPolicies() decorator.
+
+Ensure AuthModule imports UsersModule, PassportModule, and configures JwtModule.registerAsync using the ConfigService (expecting a JWT_SECRET in the environment).

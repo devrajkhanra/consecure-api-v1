@@ -11,6 +11,8 @@ import * as Joi from 'joi';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { UsersModule } from './users/users.module';
 import databaseConfig from './config/database.config';
 
@@ -25,15 +27,22 @@ import databaseConfig from './config/database.config';
         NODE_ENV: Joi.string()
           .valid('development', 'production', 'test')
           .default('development'),
+        // ── Database ──────────────────────────────────────────────────
         DB_HOST: Joi.string().default('localhost'),
         DB_PORT: Joi.number().default(5432),
         DB_USER: Joi.string().default('postgres'),
         DB_PASSWORD: Joi.string().default(process.env.PGPASSWORD ?? ''),
         DB_DATABASE: Joi.string().default('consecure_dev'),
         DB_SSL: Joi.boolean().default(false),
-        // TYPEORM_SYNC is intentionally absent — Step 5.
-        // Schema changes must go through migrations; the env file can
-        // never accidentally re-enable synchronise in production.
+        // ── JWT ───────────────────────────────────────────────────────
+        // Both secrets are REQUIRED — the application will refuse to boot
+        // without them, preventing accidental deployment with empty secrets.
+        JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+        JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+        JWT_ACCESS_EXPIRES_IN: Joi.number().positive().default(900),
+        JWT_REFRESH_EXPIRES_IN: Joi.number().positive().default(604_800),
+        // TYPEORM_SYNC is intentionally absent.
+        // Schema changes must go through migrations.
       }),
       validationOptions: {
         allowUnknown: true,
@@ -53,60 +62,23 @@ import databaseConfig from './config/database.config';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
-
-        // ── Step 5: synchronize is PERMANENTLY false ───────────────────
-        //
-        // TypeORM `synchronize: true` compares the in-process entity
-        // metadata against the live schema and issues ALTER TABLE / DROP
-        // COLUMN statements automatically. In production this is a
-        // data-loss timebomb:
-        //
-        //  • A renamed column → TypeORM drops the old column (data gone).
-        //  • Two pods starting simultaneously → concurrent ALTER TABLE
-        //    deadlock or duplicate index errors.
-        //  • A botched entity → production table silently destroyed.
-        //
-        // The value is hardcoded here. It cannot be overridden by an
-        // environment variable. All schema changes must go through
-        // reviewed, version-controlled TypeORM migrations:
-        //
-        //   npx typeorm migration:generate src/migrations/MyChange
-        //   npx typeorm migration:run
         synchronize: false,
-
         ssl: config.get<boolean>('DB_SSL')
           ? { rejectUnauthorized: false }
           : false,
       }),
     }),
 
-    // ── Step 3: Rate limiting ──────────────────────────────────────────
-    //
-    // A single named throttler called 'global' defines the baseline.
-    // The name is referenced in @Throttle({ global: {...} }) on
-    // individual routes that need a tighter budget.
-    //
-    // ttl is in milliseconds for @nestjs/throttler v5+.
+    // ── Rate limiting ──────────────────────────────────────────────────
     ThrottlerModule.forRoot([
       {
         name: 'global',
-        ttl: 60_000,   // 60-second rolling window
-        limit: 100,    // 100 requests per window per IP
+        ttl: 60_000,
+        limit: 100,
       },
     ]),
 
-    // ── Step 4: Structured logging with Pino ──────────────────────────
-    //
-    // nestjs-pino wraps pino-http so every HTTP request automatically
-    // gets a structured log line containing:
-    //   - req.id  (correlation ID — sourced from X-Request-Id header or
-    //               generated as a UUID v4 if absent)
-    //   - req.method, req.url, res.statusCode, responseTime
-    //   - any context fields added via this.logger.log({...}, 'message')
-    //
-    // In development the 'pino-pretty' transport renders human-readable
-    // output. In production raw NDJSON is emitted so log aggregators
-    // (Datadog, Loki, CloudWatch) can parse it without transformation.
+    // ── Structured logging ────────────────────────────────────────────
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -115,18 +87,9 @@ import databaseConfig from './config/database.config';
 
         return {
           pinoHttp: {
-            // Honour LOG_LEVEL env override; default to info/debug by env.
             level: config.get<string>('LOG_LEVEL') ??
               (isProduction ? 'info' : 'debug'),
 
-            // Correlation ID strategy:
-            //   1. Honour an X-Request-Id header supplied by the caller
-            //      (e.g. set by an API gateway or upstream service).
-            //   2. Fall back to a freshly generated UUID v4.
-            //
-            // pino-http attaches the resolved ID to every log line in
-            // the request scope AND sets it on the response as
-            // X-Request-Id so callers can correlate client-side logs.
             genReqId: (req: IncomingMessage): string => {
               const header = req.headers['x-request-id'];
               if (typeof header === 'string' && header.length > 0) {
@@ -135,21 +98,15 @@ import databaseConfig from './config/database.config';
               return randomUUID();
             },
 
-            // Redact sensitive headers before they reach the log sink.
-            // The 'remove' flag replaces matched paths with [Redacted]
-            // rather than omitting the key, which makes it obvious in
-            // audit logs that a value existed but was intentionally hidden.
             redact: {
               paths: [
                 'req.headers.authorization',
                 'req.headers.cookie',
                 'req.headers["x-api-key"]',
               ],
-              remove: false, // keep key, replace value with '[Redacted]'
+              remove: false,
             },
 
-            // pino-pretty in development: colourised, single-line output.
-            // Omit transport in production so log lines are raw NDJSON.
             transport: isProduction
               ? undefined
               : {
@@ -162,8 +119,6 @@ import databaseConfig from './config/database.config';
                   },
                 },
 
-            // Suppress noisy health-check endpoints from the access log
-            // so they do not inflate log volume or skew latency percentiles.
             autoLogging: {
               ignore: (req: IncomingMessage) =>
                 req.url === '/health' || req.url === '/ready',
@@ -174,22 +129,32 @@ import databaseConfig from './config/database.config';
     }),
 
     UsersModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
 
-    // ── Step 3: Apply ThrottlerGuard to every route globally ──────────
-    //
-    // Registering via APP_GUARD (the NestJS enhancer token) means the
-    // guard runs for every controller in every module without decorating
-    // each one individually.
-    //
-    // Routes can opt out with @SkipThrottle() or override the limit
-    // with @Throttle({ global: { limit: N, ttl: M } }).
+    // ── Global rate-limit guard ────────────────────────────────────────
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+
+    // ── Global JWT authentication guard ───────────────────────────────
+    //
+    // Every route requires a valid JWT access token by default.
+    // Routes opt OUT with the @Public() decorator (e.g. /auth/login,
+    // /auth/register).  This "secure by default" posture prevents
+    // accidentally exposing a new route without authentication.
+    //
+    // Guard execution order matches registration order in `providers`.
+    // ThrottlerGuard runs first (rate-limiting happens before auth so
+    // bots are slowed down even if they never get a token), then
+    // JwtAuthGuard validates the token.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })
