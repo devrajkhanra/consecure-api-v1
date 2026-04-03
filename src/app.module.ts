@@ -28,7 +28,7 @@ import databaseConfig from './config/database.config';
         DB_HOST: Joi.string().default('localhost'),
         DB_PORT: Joi.number().default(5432),
         DB_USER: Joi.string().default('postgres'),
-        DB_PASSWORD: Joi.string().required(),
+        DB_PASSWORD: Joi.string().default(process.env.PGPASSWORD ?? ''),
         DB_DATABASE: Joi.string().default('consecure_dev'),
         DB_SSL: Joi.boolean().default(false),
         // TYPEORM_SYNC is intentionally absent — Step 5.
