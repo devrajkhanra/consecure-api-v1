@@ -1,5 +1,18 @@
 import { Expose } from 'class-transformer';
 
+/**
+ * The exact shape this API exposes to callers.
+ *
+ * Rules:
+ *  - Every field is decorated with @Expose() so that
+ *    plainToInstance(..., { excludeExtraneousValues: true })
+ *    in UserMapper acts as an allowlist — any field NOT listed here
+ *    is silently dropped, including `password`, `deletedAt`, and any
+ *    future internal columns added to the entity.
+ *  - We never add `password` here. Ever.
+ *  - Dates are typed as Date so serialisation to ISO-8601 is handled
+ *    by the NestJS ClassSerializerInterceptor or JSON.stringify.
+ */
 export class UserResponseDto {
   @Expose()
   id!: string;
