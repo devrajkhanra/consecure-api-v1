@@ -50,7 +50,10 @@ export class UsersService {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, UsersService.SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(
+      dto.password,
+      UsersService.SALT_ROUNDS,
+    );
 
     return this.userRepository.createUser({
       firstName: dto.firstName,
@@ -101,7 +104,10 @@ export class UsersService {
     }
 
     if (dto.password !== undefined) {
-      patch.password = await bcrypt.hash(dto.password, UsersService.SALT_ROUNDS);
+      patch.password = await bcrypt.hash(
+        dto.password,
+        UsersService.SALT_ROUNDS,
+      );
     }
 
     return this.userRepository.updateUser(id, patch);

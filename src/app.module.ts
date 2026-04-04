@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -14,6 +14,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { UsersModule } from './users/users.module';
+import { LoggingMiddleware } from './middleware/logging.middleware';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -87,7 +88,8 @@ import databaseConfig from './config/database.config';
 
         return {
           pinoHttp: {
-            level: config.get<string>('LOG_LEVEL') ??
+            level:
+              config.get<string>('LOG_LEVEL') ??
               (isProduction ? 'info' : 'debug'),
 
             genReqId: (req: IncomingMessage): string => {
@@ -158,4 +160,8 @@ import databaseConfig from './config/database.config';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(LoggingMiddleware).forRoutes('*');
+  }
+}

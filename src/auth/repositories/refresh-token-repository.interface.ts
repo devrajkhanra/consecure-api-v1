@@ -13,7 +13,7 @@ export interface IRefreshTokenRepository {
    * The caller is responsible for hashing `tokenHash` before passing it in.
    */
   create(data: {
-    id: string;       // pre-generated UUID so tokenId can be embedded in JWT
+    id: string; // pre-generated UUID so tokenId can be embedded in JWT
     tokenHash: string;
     userId: string;
     family: string;

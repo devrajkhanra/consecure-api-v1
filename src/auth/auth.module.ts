@@ -11,9 +11,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CaslAbilityFactory } from './casl/casl-ability.factory';
 import { RefreshToken } from './entities/refresh-token.entity';
-import {
-  REFRESH_TOKEN_REPOSITORY,
-} from './repositories/refresh-token-repository.interface';
+import { REFRESH_TOKEN_REPOSITORY } from './repositories/refresh-token-repository.interface';
 import { TypeOrmRefreshTokenRepository } from './repositories/refresh-token.repository';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -76,11 +74,6 @@ import { LocalStrategy } from './strategies/local.strategy';
       useClass: TypeOrmRefreshTokenRepository,
     },
   ],
-  exports: [
-    AuthService,
-    CaslAbilityFactory,
-    JwtModule,
-    PassportModule,
-  ],
+  exports: [AuthService, CaslAbilityFactory, JwtModule, PassportModule],
 })
 export class AuthModule {}

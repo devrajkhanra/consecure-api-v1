@@ -22,9 +22,7 @@ import { UsersService } from './users.service';
  *    by forwardRef() or module imports.
  */
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User]),
-  ],
+  imports: [TypeOrmModule.forFeature([User])],
   controllers: [UsersController],
   providers: [
     UsersService,
@@ -34,9 +32,6 @@ import { UsersService } from './users.service';
       useClass: TypeOrmUserRepository,
     },
   ],
-  exports: [
-    UsersService,
-    CaslAbilityFactory,
-  ],
+  exports: [UsersService, CaslAbilityFactory],
 })
 export class UsersModule {}

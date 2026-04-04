@@ -56,9 +56,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  async create(
-    @Body() createUserDto: CreateUserDto,
-  ): Promise<UserResponseDto> {
+  async create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
     const user = await this.usersService.create(createUserDto);
     return UserMapper.toResponse(user);
   }

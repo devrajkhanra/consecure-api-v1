@@ -22,9 +22,9 @@ async function bootstrap(): Promise<void> {
   // ── Global validation pipeline ─────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,           // strip undeclared properties
+      whitelist: true, // strip undeclared properties
       forbidNonWhitelisted: true, // 400 on extra properties
-      transform: true,           // materialise DTOs + activate @Type / @Transform
+      transform: true, // materialise DTOs + activate @Type / @Transform
     }),
   );
 
@@ -46,7 +46,17 @@ async function bootstrap(): Promise<void> {
   // disconnects, and rolling deploys can cause 503s.
   app.enableShutdownHooks();
 
-  const port = process.env.PORT ?? 3000;
+  const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',') 
+    : ['http://localhost:3000', 'http://localhost:8081'];
+
+  // ── Enable CORS for specific origins ───────────────────────────────────
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+  });
+
+  const port = process.env.PORT ?? 5000;
   await app.listen(port, '0.0.0.0');
 }
 

@@ -42,7 +42,10 @@ export class TypeOrmRefreshTokenRepository implements IRefreshTokenRepository {
     });
   }
 
-  async rotateToken(oldId: string, replacedById: string): Promise<RefreshToken> {
+  async rotateToken(
+    oldId: string,
+    replacedById: string,
+  ): Promise<RefreshToken> {
     await this.repo.update(oldId, {
       isRevoked: true,
       replacedBy: replacedById,

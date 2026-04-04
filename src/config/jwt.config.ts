@@ -13,13 +13,16 @@ import { registerAs } from '@nestjs/config';
 export interface JwtConfig {
   accessSecret: string;
   refreshSecret: string;
-  accessExpiresIn: number;  // seconds
+  accessExpiresIn: number; // seconds
   refreshExpiresIn: number; // seconds
 }
 
-export default registerAs('jwt', (): JwtConfig => ({
-  accessSecret: process.env.JWT_ACCESS_SECRET!,
-  refreshSecret: process.env.JWT_REFRESH_SECRET!,
-  accessExpiresIn: Number(process.env.JWT_ACCESS_EXPIRES_IN ?? 900),
-  refreshExpiresIn: Number(process.env.JWT_REFRESH_EXPIRES_IN ?? 604_800),
-}));
+export default registerAs(
+  'jwt',
+  (): JwtConfig => ({
+    accessSecret: process.env.JWT_ACCESS_SECRET!,
+    refreshSecret: process.env.JWT_REFRESH_SECRET!,
+    accessExpiresIn: Number(process.env.JWT_ACCESS_EXPIRES_IN ?? 900),
+    refreshExpiresIn: Number(process.env.JWT_REFRESH_EXPIRES_IN ?? 604_800),
+  }),
+);

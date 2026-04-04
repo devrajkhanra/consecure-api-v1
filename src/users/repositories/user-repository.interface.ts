@@ -38,10 +38,7 @@ export interface IUserRepository {
    * Callers must treat `cursor` as an opaque string — its internal encoding
    * is an implementation detail of the concrete repository.
    */
-  findAll(options?: {
-    limit?: number;
-    cursor?: string;
-  }): Promise<{
+  findAll(options?: { limit?: number; cursor?: string }): Promise<{
     data: User[];
     nextCursor: string | null;
   }>;
