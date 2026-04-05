@@ -63,7 +63,7 @@ import databaseConfig from './config/database.config';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         ssl: config.get<boolean>('DB_SSL')
           ? { rejectUnauthorized: false }
           : false,

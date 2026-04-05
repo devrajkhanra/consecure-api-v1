@@ -93,7 +93,7 @@ JWT_REFRESH_EXPIRES_IN=604800
 
 - `USER` — default role
 - `ADMIN` — can manage users
-- `SUPER_ADMIN` — can assign/remove roles
+- `SUPER_ADMIN` — can assign/remove roles and revoke any user's sessions globally
 
 ## API Endpoints
 
@@ -114,6 +114,10 @@ JWT_REFRESH_EXPIRES_IN=604800
 
 - `POST /auth/roles/assign` — assign a role (`SUPER_ADMIN`)
 - `DELETE /auth/roles/:userId/:role` — remove a role (`SUPER_ADMIN`)
+
+### Session management
+
+- `POST /auth/logout-all/:userId` — revoke all sessions for any user (`SUPER_ADMIN`)
 
 ### Users
 
@@ -163,6 +167,13 @@ curl http://localhost:5000/auth/me \
   -H 'Authorization: Bearer <access_token>'
 ```
 
+### Logout all sessions for a user (SUPER_ADMIN)
+
+```bash
+curl -X POST http://localhost:5000/auth/logout-all/<userId> \
+  -H 'Authorization: Bearer <super_admin_access_token>'
+```
+
 ## Authorization
 
 ### Global authentication
@@ -209,6 +220,7 @@ Use `@CheckPolicies(...)` for attribute-level checks on resources.
 - Refresh token hashes are stored for audit purposes.
 - JWT signatures are used to verify token authenticity.
 - Reusing a revoked refresh token triggers family-wide revocation.
+- `POST /auth/logout-all/:userId` is restricted to `SUPER_ADMIN` for incident response (account takeover, policy violation, etc.).
 
 ## Running in Production
 

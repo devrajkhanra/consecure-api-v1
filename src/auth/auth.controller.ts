@@ -45,7 +45,7 @@ import type { JwtRefreshPayload } from './strategies/jwt-refresh.strategy';
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   // ─── Registration ─────────────────────────────────────────────────────────
 
@@ -118,13 +118,29 @@ export class AuthController {
   }
 
   /**
-   * Revoke all active sessions for the authenticated user.
-   * Use after a suspected account compromise or explicit "log out everywhere".
-   */
+ * Revoke all active sessions for the authenticated user.
+ * Use after a suspected account compromise or explicit "log out everywhere".
+ */
   @Post('logout-all')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logoutAll(@CurrentUser() user: User): Promise<void> {
     await this.authService.logoutAll(user.id);
+  }
+
+  /**
+   * Revoke every active session for an arbitrary user.
+   * SUPER_ADMIN only — used for incident response (account takeover,
+   * policy violation, etc.).  The target user is identified by UUID in
+   * the path so there is no ambiguity about which account is affected.
+   */
+  @Post('logout-all/:userId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles(Role.SUPER_ADMIN)
+  async logoutAllForUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<void> {
+    await this.authService.logoutAll(userId);
   }
 
   // ─── Profile ──────────────────────────────────────────────────────────────
