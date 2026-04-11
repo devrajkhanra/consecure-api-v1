@@ -14,6 +14,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { UsersModule } from './users/users.module';
+import { ProjectsModule } from './projects/projects.module';
 import { LoggingMiddleware } from './middleware/logging.middleware';
 import databaseConfig from './config/database.config';
 
@@ -132,6 +133,7 @@ import databaseConfig from './config/database.config';
 
     UsersModule,
     AuthModule,
+    ProjectsModule,
   ],
   controllers: [AppController],
   providers: [

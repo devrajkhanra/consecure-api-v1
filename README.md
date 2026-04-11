@@ -12,7 +12,7 @@ This API provides:
 - Reuse-attack detection for stolen refresh tokens
 - Role-based access control
 - Attribute-level authorization with CASL
-- Soft-deleted users
+- Soft-deleted users and projects
 - Global throttling and structured logging
 
 ## Tech Stack
@@ -93,7 +93,7 @@ JWT_REFRESH_EXPIRES_IN=604800
 
 - `USER` — default role
 - `ADMIN` — can manage users
-- `SUPER_ADMIN` — can assign/remove roles and revoke any user's sessions globally
+- `SUPER_ADMIN` — can assign/remove roles, revoke any user's sessions globally, and fully manage projects
 
 ## API Endpoints
 
@@ -122,10 +122,18 @@ JWT_REFRESH_EXPIRES_IN=604800
 ### Users
 
 - `POST /users` — create user (`ADMIN`, `SUPER_ADMIN`)
-- `GET /users` — list users (`ADMIN`, `SUPER_ADMIN`)
+- `GET /users` — list users with cursor pagination (`ADMIN`, `SUPER_ADMIN`)
 - `GET /users/:id` — get user by id (`ADMIN`, `SUPER_ADMIN`)
 - `PATCH /users/:id` — update user (`ADMIN`, `SUPER_ADMIN`)
 - `DELETE /users/:id` — soft delete user (`ADMIN`, `SUPER_ADMIN`)
+
+### Projects
+
+- `POST /projects` — create project (`SUPER_ADMIN`)
+- `GET /projects` — list projects with cursor pagination (`SUPER_ADMIN`)
+- `GET /projects/:id` — get project by id (`SUPER_ADMIN`)
+- `PATCH /projects/:id` — update project (`SUPER_ADMIN`)
+- `DELETE /projects/:id` — soft delete project (`SUPER_ADMIN`)
 
 ## Request / Response Examples
 
@@ -174,6 +182,61 @@ curl -X POST http://localhost:5000/auth/logout-all/<userId> \
   -H 'Authorization: Bearer <super_admin_access_token>'
 ```
 
+### Create project (SUPER_ADMIN)
+
+```bash
+curl -X POST http://localhost:5000/projects \
+  -H 'Authorization: Bearer <super_admin_access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "workOrderNumber": "WO-2024-001",
+    "projectName": "Network Infrastructure Upgrade",
+    "clientName": "Acme Corporation",
+    "workOrderDate": "2024-04-10",
+    "status": "PENDING",
+    "metadata": {
+      "region": "APAC",
+      "priority": "high",
+      "estimatedDays": 30
+    }
+  }'
+```
+
+### List projects with pagination (SUPER_ADMIN)
+
+```bash
+curl 'http://localhost:5000/projects?limit=10' \
+  -H 'Authorization: Bearer <super_admin_access_token>'
+
+# Next page using cursor from previous response
+curl 'http://localhost:5000/projects?limit=10&cursor=<nextCursor>' \
+  -H 'Authorization: Bearer <super_admin_access_token>'
+```
+
+### Update project status (SUPER_ADMIN)
+
+```bash
+curl -X PATCH http://localhost:5000/projects/<id> \
+  -H 'Authorization: Bearer <super_admin_access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "status": "IN_PROGRESS",
+    "metadata": {
+      "region": "APAC",
+      "priority": "high",
+      "estimatedDays": 30,
+      "assignedEngineer": "John Smith"
+    }
+  }'
+```
+
+### Soft delete project (SUPER_ADMIN)
+
+```bash
+curl -X DELETE http://localhost:5000/projects/<id> \
+  -H 'Authorization: Bearer <super_admin_access_token>'
+```
+
 ## Authorization
 
 ### Global authentication
@@ -214,6 +277,47 @@ Use `@CheckPolicies(...)` for attribute-level checks on resources.
 - `expiresAt`
 - `createdAt`
 
+### projects
+
+- `id`
+- `workOrderNumber` — unique; used as the external client-facing identifier
+- `projectName`
+- `clientName`
+- `workOrderDate` — `DATE` column (no time component)
+- `status` — PostgreSQL native enum: `PENDING`, `IN_PROGRESS`, `ON_HOLD`, `COMPLETED`, `CANCELLED`
+- `metadata` — `jsonb`; open-ended key-value store for project-specific attributes; no migration required to add new keys
+- `createdAt`
+- `updatedAt`
+- `deletedAt`
+
+## Project Status Values
+
+| Value | Meaning |
+|---|---|
+| `PENDING` | Work order received, not yet started |
+| `IN_PROGRESS` | Actively being worked on |
+| `ON_HOLD` | Temporarily paused |
+| `COMPLETED` | Work finished and delivered |
+| `CANCELLED` | Work order voided |
+
+## Dynamic Project Metadata
+
+The `metadata` field accepts any flat `Record<string, unknown>` object. This allows storing arbitrary project-specific attributes without requiring a schema migration. Examples:
+
+```json
+{
+  "region": "APAC",
+  "priority": "high",
+  "estimatedDays": 30,
+  "assignedEngineer": "John Smith",
+  "contractRef": "CTR-2024-889"
+}
+```
+
+- Absent or `null` means no additional metadata was provided.
+- Nested objects are stored as-is in `jsonb` but are discouraged — keep structures flat for simpler querying.
+- Individual features relying on specific metadata keys must validate those keys at the application level.
+
 ## Notes
 
 - Passwords are hashed with bcrypt.
@@ -221,6 +325,8 @@ Use `@CheckPolicies(...)` for attribute-level checks on resources.
 - JWT signatures are used to verify token authenticity.
 - Reusing a revoked refresh token triggers family-wide revocation.
 - `POST /auth/logout-all/:userId` is restricted to `SUPER_ADMIN` for incident response (account takeover, policy violation, etc.).
+- All project routes are restricted to `SUPER_ADMIN`. No other role can read, create, update, or delete projects.
+- Soft-deleted records (users and projects) are never returned in normal queries; they are retained in the database for audit purposes.
 
 ## Running in Production
 
